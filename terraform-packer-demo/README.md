@@ -4,11 +4,13 @@
 
 ## 📋 项目概述
 
-该项目展示了如何使用现代 DevOps 工具链自动化云基础设施的构建和部署：
+该项目展示了如何使用现代 DevOps 工具链自动化云基础设施的完整生命周期管理：
 
 - **Packer**: 构建预装软件的自定义 Ubuntu AMI
 - **Terraform**: 部署 AWS 云基础设施
-- **自动化脚本**: 一键构建和部署流程
+- **自动化脚本**: 
+  - 🚀 `build-and-launch.sh` - 一键构建和部署流程
+  - 🧹 `cleanup.sh` - 完整清理所有资源（包括 AMI）
 
 ## 🏗️ 架构概览
 
@@ -105,6 +107,12 @@ sh build-and-launch.sh
 5. 📋 规划部署
 6. 🚀 部署基础设施（需要确认）
 
+#### 清理部署
+```bash
+# 完整清理所有资源（包括 AMI）
+sh cleanup.sh
+```
+
 ### 2. 分步部署
 
 #### 步骤 1: 构建 AMI
@@ -188,7 +196,8 @@ nginx 默认页面应该正常显示。
 ```
 terraform-packer-demo/
 ├── README.md                    # 项目文档
-├── build-and-launch.sh         # 自动化构建脚本
+├── build-and-launch.sh         # 自动化构建脚本 🚀
+├── cleanup.sh                  # 完整清理脚本 🧹
 │
 ├── main.pkr.hcl                # Packer 主配置文件
 ├── scripts/
@@ -280,14 +289,58 @@ terraform plan -detailed-exitcode
 - 检查 nginx 服务状态：`sudo systemctl status nginx`
 - 确认实例有公网 IP
 
+### 5. 清理问题
+
+#### AMI 清理失败
+```bash
+# 查看所有 E2B 相关的 AMI
+aws ec2 describe-images --owners self --filters "Name=tag:Project,Values=E2B"
+
+# 手动删除特定 AMI
+aws ec2 deregister-image --image-id ami-xxxxxxxxx
+```
+
+#### 快照清理失败
+```bash
+# 查看孤立的快照
+aws ec2 describe-snapshots --owner-ids self --filters "Name=tag:Project,Values=E2B"
+
+# 手动删除快照
+aws ec2 delete-snapshot --snapshot-id snap-xxxxxxxxx
+```
+
+#### 网络资源清理失败
+```bash
+# 如果 VPC 无法删除，检查是否有依赖资源
+aws ec2 describe-vpc-endpoints --filters "Name=vpc-id,Values=vpc-xxxxxxxxx"
+aws ec2 describe-nat-gateways --filter "Name=vpc-id,Values=vpc-xxxxxxxxx"
+```
+
 ## 🧹 清理资源
 
-### 销毁 Terraform 资源
+⚠️ **重要**: `terraform destroy` 无法清理 Packer 创建的 AMI！我们提供了专门的清理脚本来解决这个问题。
+
+### 一键完整清理（推荐）
+```bash
+# 运行完整清理脚本
+sh cleanup.sh
+```
+
+该脚本会自动执行以下操作：
+1. 🏗️ 销毁所有 Terraform 管理的资源
+2. 🗑️ 注销 Packer 创建的 AMI
+3. 💾 删除关联的 EBS 快照
+4. 📄 清理生成的文件（amivar.tf, manifest.json 等）
+5. ✅ 验证清理是否完整
+
+### 分步清理
+
+#### 1. 销毁 Terraform 资源
 ```bash
 terraform destroy
 ```
 
-### 删除自定义 AMI
+#### 2. 手动清理 AMI（如果不使用清理脚本）
 ```bash
 # 获取 AMI ID
 AMI_ID=$(cat amivar.tf | grep default | cut -d'"' -f2)
@@ -298,6 +351,21 @@ aws ec2 deregister-image --image-id $AMI_ID
 # 删除关联的快照
 aws ec2 describe-snapshots --owner-ids self --filters "Name=description,Values=*$AMI_ID*" --query 'Snapshots[*].SnapshotId' --output text | xargs -I {} aws ec2 delete-snapshot --snapshot-id {}
 ```
+
+#### 3. 清理生成的文件
+```bash
+rm -f amivar.tf manifest.json terraform.tfstate terraform.tfstate.backup .terraform.lock.hcl
+rm -rf .terraform/
+```
+
+### 清理验证
+清理脚本会自动验证以下资源是否完全清理：
+- ✅ EC2 实例
+- ✅ VPC 和网络资源
+- ✅ 安全组
+- ✅ 自定义 AMI
+
+如果发现遗留资源，脚本会提供手动清理的命令。
 
 ## 📊 成本估算
 
@@ -326,4 +394,5 @@ MIT License
 
 ---
 
-**⚡ 快速开始**: `sh build-and-launch.sh` 
+**⚡ 快速开始**: `sh build-and-launch.sh`  
+**🧹 完整清理**: `sh cleanup.sh` 
