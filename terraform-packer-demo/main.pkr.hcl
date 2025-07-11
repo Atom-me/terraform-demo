@@ -20,7 +20,7 @@ variable "source_ami" {
 # Output AMI Configuration
 variable "ami_name" {
   type        = string
-  default     = "agentsphere-ubuntu-ami-{{isotime \"2006.01.02_15.04.05\" \"Asia/Shanghai\"}}"
+  default     = "e2b-ubuntu-ami-{{isotime \"2006.01.02_15.04.05\" \"Asia/Shanghai\"}}"
   description = "Name for the resulting AMI. Timestamp will be automatically appended to avoid conflicts"
 }
 
@@ -67,7 +67,7 @@ variable "default_tags" {
   type = map(string)
   default = {
     Environment = "dev"
-    Project     = "AgentSphere"
+    Project     = "E2B"
     Owner       = "DevOps"
     CreatedBy   = "Packer"
     ManagedBy   = "Terraform"

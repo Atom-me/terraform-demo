@@ -1,4 +1,4 @@
-# AgentSphere AWS Infrastructure Demo
+# E2B AWS Infrastructure Demo
 
 🚀 一个使用 **Packer + Terraform** 构建自定义 AMI 并在 AWS 上部署基础设施的完整示例项目。
 

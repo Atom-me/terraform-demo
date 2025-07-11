@@ -6,9 +6,9 @@ resource "aws_vpc" "main" {
   enable_dns_hostnames = "true"
 
   tags = {
-    Name        = "AgentSphere-demo-keypair"
+    Name        = "E2B-demo-vpc"
     Environment = "dev"
-    Project     = "AgentSphere"
+    Project     = "E2B"
   }
 }
 
@@ -20,9 +20,9 @@ resource "aws_subnet" "main-public-1" {
   availability_zone       = "us-east-1a"
 
   tags = {
-    Name        = "AgentSphere-demo-keypair"
+    Name        = "E2B-demo-subnet"
     Environment = "dev"
-    Project     = "AgentSphere"
+    Project     = "E2B"
   }
 }
 
@@ -31,9 +31,9 @@ resource "aws_internet_gateway" "main-gw" {
   vpc_id = aws_vpc.main.id
 
   tags = {
-    Name        = "AgentSphere-demo-keypair"
+    Name        = "E2B-demo-igw"
     Environment = "dev"
-    Project     = "AgentSphere"
+    Project     = "E2B"
   }
 }
 
@@ -46,9 +46,9 @@ resource "aws_route_table" "main-public" {
   }
 
   tags = {
-    Name        = "AgentSphere-demo-keypair"
+    Name        = "E2B-demo-rt"
     Environment = "dev"
-    Project     = "AgentSphere"
+    Project     = "E2B"
   }
 }
 

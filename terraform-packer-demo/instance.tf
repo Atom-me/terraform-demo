@@ -17,7 +17,7 @@ resource "aws_instance" "example" {
     volume_size = 10
     encrypted   = true
     tags = {
-      Name = "AgentSphere-demo-root-volume"
+      Name = "E2B-demo-root-volume"
     }
   }
   
@@ -29,9 +29,9 @@ resource "aws_instance" "example" {
   #             EOF
   
   tags = {
-    Name        = "AgentSphere-demo-instance"
+    Name        = "E2B-demo-instance"
     Environment = "dev" 
-    Project     = "AgentSphere"
+    Project     = "E2B"
     CreatedBy   = "terraform"
   }
 }

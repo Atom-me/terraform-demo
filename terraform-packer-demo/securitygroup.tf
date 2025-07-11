@@ -1,7 +1,7 @@
 resource "aws_security_group" "example-instance" {
-  name_prefix = "AgentSphere-demo-"
+  name_prefix = "E2B-demo-"
   vpc_id      = aws_vpc.main.id
-  description = "Security group for AgentSphere demo instance"
+  description = "Security group for E2B demo instance"
 
   # SSH access - restrict to your IP for better security
   ingress {
@@ -40,9 +40,9 @@ resource "aws_security_group" "example-instance" {
   }
 
   tags = {
-    Name        = "AgentSphere-demo-sg"
+    Name        = "E2B-demo-sg"
     Environment = "dev"
-    Project     = "AgentSphere"
+    Project     = "E2B"
   }
 }
 
