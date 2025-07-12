@@ -8,6 +8,7 @@
 
 - **Packer**: 构建预装软件的自定义 Ubuntu AMI
 - **Terraform**: 部署 AWS 云基础设施
+- **统一标签管理**: 🏷️ 自动化资源标记和命名规范
 - **自动化脚本**: 
   - 🚀 `build-and-launch.sh` - 一键构建和部署流程
   - 🧹 `cleanup.sh` - 完整清理所有资源（包括 AMI）
@@ -148,13 +149,46 @@ terraform apply
 | `volume_type` | `gp3` | EBS 卷类型 |
 | `environment` | `dev` | 环境标签 |
 
-### Terraform 配置 (`vars.tf`)
+### Terraform 配置
 
+#### 变量配置 (`vars.tf`)
+
+**AWS 配置**
 | 变量 | 默认值 | 描述 |
 |------|--------|------|
 | `AWS_REGION` | `us-east-1` | AWS 区域 |
+| `AMI_ID` | `""` | AMI ID（由构建脚本自动设置） |
+
+**SSH 配置**
+| 变量 | 默认值 | 描述 |
+|------|--------|------|
 | `PATH_TO_PRIVATE_KEY` | `/Users/atom/.ssh/id_rsa` | SSH 私钥路径 |
 | `PATH_TO_PUBLIC_KEY` | `/Users/atom/.ssh/id_rsa.pub` | SSH 公钥路径 |
+
+**项目配置**
+| 变量 | 默认值 | 描述 |
+|------|--------|------|
+| `project_name` | `E2B` | 项目名称 |
+| `environment` | `dev` | 环境名称 (dev/staging/prod) |
+| `owner` | `DevOps` | 资源所有者 |
+
+#### 标签管理系统 🏷️ (`tags.tf`)
+
+**文件组织**：
+- `vars.tf` - 所有变量定义
+- `tags.tf` - 标签逻辑和资源命名规范
+
+**自动应用的标签**：
+- **Project**: 项目名称
+- **Environment**: 环境名称
+- **Owner**: 资源所有者
+- **CreatedBy**: terraform/packer
+- **ManagedBy**: terraform/packer
+- **Repository**: terraform-packer-demo
+
+**资源命名规范**：
+- 格式: `{project_name}-{environment}-{resource_type}`
+- 示例: `E2B-dev-vpc`, `E2B-dev-subnet`, `E2B-dev-sg`, `E2B-dev-instance`
 
 ## 📤 输出信息
 
@@ -206,6 +240,7 @@ terraform-packer-demo/
 ├── provider.tf                 # Terraform Provider 配置
 ├── versions.tf                 # Terraform 版本约束
 ├── vars.tf                     # Terraform 变量定义
+├── tags.tf                     # 统一标签管理 🏷️
 ├── outputs.tf                  # Terraform 输出定义
 ├── amivar.tf                   # AMI ID 变量（自动生成）
 │
@@ -218,6 +253,26 @@ terraform-packer-demo/
 ```
 
 ## 🔧 自定义配置
+
+### 修改项目标签和命名
+编辑 `vars.tf` 中的项目配置变量：
+```hcl
+variable "project_name" {
+  default = "MyProject"  # 改为您的项目名称
+}
+
+variable "environment" {
+  default = "prod"       # 改为您的环境
+}
+
+variable "owner" {
+  default = "MyTeam"     # 改为您的团队名称
+}
+```
+
+这会自动更新所有资源的标签和命名：
+- 资源名称: `MyProject-prod-vpc`
+- 标签: `Project = "MyProject"`
 
 ### 修改预装软件
 编辑 `scripts/install_software.sh`：

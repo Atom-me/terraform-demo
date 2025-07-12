@@ -119,35 +119,39 @@ done
 # Step 4: Verify cleanup
 print_status "Step 4: Verifying cleanup..."
 
-# Check if any E2B-related resources still exist
-print_info "Checking for remaining E2B resources..."
+# Get project name from Terraform variables
+PROJECT_NAME=$(grep -o 'default[[:space:]]*=[[:space:]]*"[^"]*"' tags.tf | grep project_name -A1 | tail -1 | sed 's/.*"\\([^"]*\\)".*/\\1/' 2>/dev/null || echo "E2B")
+print_info "Using project name: $PROJECT_NAME"
+
+# Check if any project-related resources still exist
+print_info "Checking for remaining $PROJECT_NAME resources..."
 
 # Check for EC2 instances
-INSTANCES=$(aws ec2 describe-instances --filters "Name=tag:Project,Values=E2B" "Name=instance-state-name,Values=running,pending,stopping,stopped" --query 'Reservations[*].Instances[*].InstanceId' --output text 2>/dev/null || true)
+INSTANCES=$(aws ec2 describe-instances --filters "Name=tag:Project,Values=$PROJECT_NAME" "Name=instance-state-name,Values=running,pending,stopping,stopped" --query 'Reservations[*].Instances[*].InstanceId' --output text 2>/dev/null || true)
 if [[ -n "$INSTANCES" && "$INSTANCES" != "None" ]]; then
     print_warning "Found remaining EC2 instances: $INSTANCES"
 else
-    print_status "✓ No E2B EC2 instances found"
+    print_status "✓ No $PROJECT_NAME EC2 instances found"
 fi
 
 # Check for VPCs
-VPCS=$(aws ec2 describe-vpcs --filters "Name=tag:Project,Values=E2B" --query 'Vpcs[*].VpcId' --output text 2>/dev/null || true)
+VPCS=$(aws ec2 describe-vpcs --filters "Name=tag:Project,Values=$PROJECT_NAME" --query 'Vpcs[*].VpcId' --output text 2>/dev/null || true)
 if [[ -n "$VPCS" && "$VPCS" != "None" ]]; then
     print_warning "Found remaining VPCs: $VPCS"
 else
-    print_status "✓ No E2B VPCs found"
+    print_status "✓ No $PROJECT_NAME VPCs found"
 fi
 
 # Check for Security Groups
-SGS=$(aws ec2 describe-security-groups --filters "Name=tag:Project,Values=E2B" --query 'SecurityGroups[*].GroupId' --output text 2>/dev/null || true)
+SGS=$(aws ec2 describe-security-groups --filters "Name=tag:Project,Values=$PROJECT_NAME" --query 'SecurityGroups[*].GroupId' --output text 2>/dev/null || true)
 if [[ -n "$SGS" && "$SGS" != "None" ]]; then
     print_warning "Found remaining Security Groups: $SGS"
 else
-    print_status "✓ No E2B Security Groups found"
+    print_status "✓ No $PROJECT_NAME Security Groups found"
 fi
 
 # Check for AMIs
-AMIS=$(aws ec2 describe-images --owners self --filters "Name=tag:Project,Values=E2B" --query 'Images[*].ImageId' --output text 2>/dev/null || true)
+AMIS=$(aws ec2 describe-images --owners self --filters "Name=tag:Project,Values=$PROJECT_NAME" --query 'Images[*].ImageId' --output text 2>/dev/null || true)
 if [[ -n "$AMIS" && "$AMIS" != "None" ]]; then
     print_warning "Found remaining AMIs: $AMIS"
     echo "You may want to manually clean these up if they're not needed:"
@@ -155,7 +159,7 @@ if [[ -n "$AMIS" && "$AMIS" != "None" ]]; then
         echo "  aws ec2 deregister-image --image-id $ami"
     done
 else
-    print_status "✓ No E2B AMIs found"
+    print_status "✓ No $PROJECT_NAME AMIs found"
 fi
 
 print_status "Cleanup completed successfully! 🎉"

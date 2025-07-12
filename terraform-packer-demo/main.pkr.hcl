@@ -70,7 +70,8 @@ variable "default_tags" {
     Project     = "E2B"
     Owner       = "DevOps"
     CreatedBy   = "Packer"
-    ManagedBy   = "Terraform"
+    ManagedBy   = "Packer"
+    Repository  = "terraform-packer-demo"
   }
   description = "Default tags to apply to all resources created by Packer"
 }

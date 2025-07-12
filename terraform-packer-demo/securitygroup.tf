@@ -1,7 +1,7 @@
 resource "aws_security_group" "example-instance" {
-  name_prefix = "E2B-demo-"
+  name_prefix = "${local.name_prefix}-"
   vpc_id      = aws_vpc.main.id
-  description = "Security group for E2B demo instance"
+  description = "Security group for ${var.project_name} demo instance"
 
   # SSH access - restrict to your IP for better security
   ingress {
@@ -39,10 +39,8 @@ resource "aws_security_group" "example-instance" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name        = "E2B-demo-sg"
-    Environment = "dev"
-    Project     = "E2B"
-  }
+  tags = merge(local.common_tags, {
+    Name = local.resource_names.security_group
+  })
 }
 

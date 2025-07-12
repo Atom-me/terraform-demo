@@ -16,9 +16,9 @@ resource "aws_instance" "example" {
     volume_type = "gp3"
     volume_size = 10
     encrypted   = true
-    tags = {
-      Name = "E2B-demo-root-volume"
-    }
+    tags = merge(local.common_tags, {
+      Name = local.resource_names.volume
+    })
   }
 
   # # User data script
@@ -28,11 +28,8 @@ resource "aws_instance" "example" {
   #             systemctl start nginx
   #             EOF
 
-  tags = {
-    Name        = "E2B-demo-instance"
-    Environment = "dev"
-    Project     = "E2B"
-    CreatedBy   = "terraform"
-  }
+    tags = merge(local.common_tags, {
+    Name = local.resource_names.instance
+  })
 }
 

@@ -10,14 +10,14 @@ variable "AWS_REGION" {
   }
 }
 
-# AMI Configuration
+# # AMI Configuration
 # variable "AMI_ID" {
 #   description = "AMI ID created by Packer (will be overridden by amivar.tf)"
 #   type        = string
 #   default     = ""  # Will be set by build-and-launch.sh
 # }
 
-# # SSH Key Configuration
+# SSH Key Configuration
 variable "PATH_TO_PRIVATE_KEY" {
   description = "Path to the private SSH key file"
   type        = string
@@ -25,8 +25,37 @@ variable "PATH_TO_PRIVATE_KEY" {
 }
 
 variable "PATH_TO_PUBLIC_KEY" {
-  description = "Path to the public SSH key file"
+  description = "Path to the public SSH key file"  
   type        = string
   default     = "/Users/atom/.ssh/id_rsa.pub"
+}
+
+# Project Configuration
+variable "project_name" {
+  description = "Name of the project"
+  type        = string
+  default     = "E2B"
+  
+  validation {
+    condition     = can(regex("^[A-Z][A-Za-z0-9-]*$", var.project_name))
+    error_message = "Project name must start with uppercase letter and contain only alphanumeric characters and hyphens."
+  }
+}
+
+variable "environment" {
+  description = "Environment name (dev, staging, prod)"
+  type        = string
+  default     = "dev"
+  
+  validation {
+    condition     = contains(["dev", "staging", "prod"], var.environment)
+    error_message = "Environment must be one of: dev, staging, prod."
+  }
+}
+
+variable "owner" {
+  description = "Owner of the resources"
+  type        = string
+  default     = "DevOps"
 }
 
