@@ -1,0 +1,16 @@
+# AWS 配置
+AWS_PROFILE=default
+AWS_REGION=us-east-1
+
+# 项目配置
+PREFIX=my-consul
+KEY_NAME=my-key-pair
+
+# SSH 配置
+SSH_PRIVATE_KEY=~/.ssh/id_rsa
+SSH_PUBLIC_KEY=~/.ssh/id_rsa.pub
+
+# 生产环境示例
+# AWS_PROFILE=production
+# AWS_REGION=us-west-2
+# PREFIX=prod-consul 
