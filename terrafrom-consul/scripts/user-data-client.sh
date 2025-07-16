@@ -1,65 +1,100 @@
 #!/bin/bash
-set -e
+set -eux
 exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 
-echo "Starting Consul Client setup via user-data..."
+echo "[user-data] Starting Consul Client setup..."
 
-# 设置环境变量（这些将由 Terraform 模板替换）
-export CLUSTER_TAG_NAME="server-cluster"
-export CONSUL_TOKEN="${consul_token}"
-export CONSUL_GOSSIP_ENCRYPTION_KEY="${gossip_encryption_key}"
-export CONSUL_DNS_REQUEST_TOKEN="${dns_request_token}"
-export SSH_PUBLIC_KEY="${ssh_public_key}"
+# 环境变量（由 Terraform 模板渲染）
+export AWS_REGION="${aws_region}"
+export SSH_PUBLIC_KEY="$(echo '${ssh_public_key}' | tr -d '\n')"
+export GOSSIP_KEY_SECRET_NAME="${gossip_encryption_key}"
 
-# 更新系统
+# 获取 Gossip 加密密钥
+export CONSUL_GOSSIP_ENCRYPTION_KEY=$(aws secretsmanager get-secret-value \
+  --secret-id "$GOSSIP_KEY_SECRET_NAME" \
+  --region "$AWS_REGION" \
+  --query SecretString \
+  --output text 2>/dev/null || echo "")
+
+echo "[user-data] Gossip key: $CONSUL_GOSSIP_ENCRYPTION_KEY"
+
+# 安装依赖
 apt-get update
 apt-get install -y curl unzip jq awscli git
 
 # 设置免密登录
 mkdir -p /home/ubuntu/.ssh
-echo "$SSH_PUBLIC_KEY" >> /home/ubuntu/.ssh/authorized_keys
+if ! grep -q "$SSH_PUBLIC_KEY" /home/ubuntu/.ssh/authorized_keys 2>/dev/null; then
+  echo "$SSH_PUBLIC_KEY" >> /home/ubuntu/.ssh/authorized_keys
+fi
 chmod 700 /home/ubuntu/.ssh
 chmod 600 /home/ubuntu/.ssh/authorized_keys
 chown -R ubuntu:ubuntu /home/ubuntu/.ssh
-sort /home/ubuntu/.ssh/authorized_keys | uniq > /home/ubuntu/.ssh/authorized_keys.tmp
-mv /home/ubuntu/.ssh/authorized_keys.tmp /home/ubuntu/.ssh/authorized_keys
 
-# 安装 Consul
+# 安装 Consul 二进制
 CONSUL_VERSION="1.16.1"
 cd /tmp
-curl -fsSL https://releases.hashicorp.com/consul/$${CONSUL_VERSION}/consul_$${CONSUL_VERSION}_linux_amd64.zip -o consul.zip
+curl -fsSL https://releases.hashicorp.com/consul/1.16.1/consul_1.16.1_linux_amd64.zip -o consul.zip
 unzip consul.zip
 mv consul /usr/local/bin/
 chmod +x /usr/local/bin/consul
 
 # 创建 Consul 用户和目录
 useradd --system --home /etc/consul.d --shell /bin/false consul || true
-mkdir -p /opt/consul /etc/consul.d /opt/consul/bin
+mkdir -p /opt/consul/data /etc/consul.d
 chown -R consul:consul /opt/consul /etc/consul.d
 
-# 安装 bash-commons
-mkdir -p /opt/gruntwork
-if [ ! -d /opt/gruntwork/bash-commons ]; then
-  git clone --branch v0.1.3 https://github.com/gruntwork-io/bash-commons.git /tmp/bash-commons
-  cp -r /tmp/bash-commons/modules/bash-commons/src /opt/gruntwork/bash-commons
-  chmod -R +x /opt/gruntwork/bash-commons
-  chown -R root:root /opt/gruntwork/bash-commons
-  rm -rf /tmp/bash-commons
-fi
+# 写入 Consul client 配置文件
+cat >/etc/consul.d/client.json <<EOF
+{
+  "datacenter": "$AWS_REGION",
+  "data_dir": "/opt/consul/data",
+  "log_level": "INFO",
+  "server": false,
+  "retry_join": [
+    "provider=aws region=$AWS_REGION tag_key=consul-cluster tag_value=server-cluster"
+  ],
+  "bind_addr": "PRIVATE_IP_PLACEHOLDER",
+  "client_addr": "0.0.0.0",
+  "ui_config": { "enabled": true },
+  "encrypt": "$CONSUL_GOSSIP_ENCRYPTION_KEY"
+}
+EOF
+chown consul:consul /etc/consul.d/client.json
+chmod 640 /etc/consul.d/client.json
 
-# 下载并设置 run-consul.sh
-curl -fsSL https://raw.githubusercontent.com/hashicorp/terraform-aws-consul/master/modules/run-consul/run-consul -o /opt/consul/bin/run-consul.sh
-chmod +x /opt/consul/bin/run-consul.sh
+# 动态获取私有IP并替换占位符
+PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+sed -i "s/PRIVATE_IP_PLACEHOLDER/$PRIVATE_IP/" /etc/consul.d/client.json
 
-# 设置 ulimit
-ulimit -n 65536
-export GOMAXPROCS=$(nproc)
+# 写入 systemd 服务单元
+cat >/etc/systemd/system/consul.service <<EOF
+[Unit]
+Description=HashiCorp Consul
+Requires=network-online.target
+After=network-online.target
 
-# 启动 Consul Client
-/opt/consul/bin/run-consul.sh --client \
-  --cluster-tag-name "$CLUSTER_TAG_NAME" \
-  --consul-token "$CONSUL_TOKEN" \
-  --enable-gossip-encryption \
-  --gossip-encryption-key "$CONSUL_GOSSIP_ENCRYPTION_KEY"
+[Service]
+Type=notify
+User=consul
+Group=consul
+ExecStart=/usr/local/bin/consul agent -config-dir=/etc/consul.d
+Restart=on-failure
+LimitNOFILE=65536
 
-echo "Consul Client setup completed successfully" 
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 启动 Consul 服务
+systemctl daemon-reload
+systemctl enable consul.service
+systemctl start consul.service
+
+sleep 3
+systemctl status consul.service || true
+
+ls -l /etc/consul.d/
+cat /etc/consul.d/client.json
+
+echo "[user-data] Consul Client setup completed successfully." 

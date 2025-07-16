@@ -31,6 +31,7 @@
 - **安全通信**: ACL + Gossip 加密
 - **服务发现**: 支持 DNS 和 HTTP API
 - **Web UI**: 8500 端口提供管理界面
+- **动态配置**: 自动检测网络接口和AWS区域
 
 ## 📋 系统要求
 
@@ -117,7 +118,7 @@ make consul-status
 # 测试免密登录
 make test-ssh
 
-# 打开 Web UI
+# 打开 Web UI（如果浏览器未自动打开，请手动访问输出的URL）
 make ui
 
 # SSH 到节点（免密登录）
@@ -190,6 +191,7 @@ terrafrom-consul/
 ├── vpc.tf                     # VPC 网络
 ├── sg.tf                      # 安全组
 ├── consul-secrets.tf          # Consul 密钥
+├── consul-iam.tf              # IAM 角色和策略
 ├── consul-ec2.tf              # EC2 实例
 ├── scripts/                   # User-data 脚本
 │   ├── user-data-server.sh    # 服务器节点启动脚本
@@ -221,9 +223,9 @@ terrafrom-consul/
 ```hcl
 locals {
   server_count = 3              # Server 节点数（推荐奇数）
-  server_instance_type = "t3.medium"
-  client_count = 2              # Client 节点数
-  client_instance_type = "t3.small"
+  server_instance_type = "t3.medium"  # 已优化的实例类型
+  client_count = 2              # Client 节点数（已启用）
+  client_instance_type = "t3.small"   # 成本优化的实例类型
 }
 ```
 
@@ -252,18 +254,19 @@ locals {
 
 1. **网络基础** - VPC、子网、网关、路由表
 2. **安全组** - Consul 端口规则
-3. **密钥管理** - ACL Token、Gossip Key
-4. **Server 节点** - 3 个 Consul Server (user-data 自动配置)
-5. **Client 节点** - 2 个 Consul Client (user-data 自动配置)
-5. **Client 节点** - 2 个 Consul Client
+3. **IAM 角色** - EC2实例权限和Secrets Manager访问
+4. **密钥管理** - ACL Token、Gossip Key
+5. **Server 节点** - 3 个 Consul Server (user-data 自动配置)
+6. **Client 节点** - 2 个 Consul Client (user-data 自动配置)
 
 ### 启动流程
 
 1. **依赖安装** - Consul、bash-commons、工具
-2. **脚本上传** - file provisioner 传输
-3. **Consul 启动** - 自动配置和启动
-4. **集群形成** - Cloud Auto-Join 发现
-5. **ACL 初始化** - Leader 节点执行
+2. **动态配置** - 自动检测私有IP和AWS区域
+3. **密钥获取** - 从Secrets Manager获取Gossip Key
+4. **Consul 启动** - 自动配置和启动
+5. **集群形成** - Cloud Auto-Join 发现
+6. **ACL 初始化** - Leader 节点执行
 
 ## 🛠️ 管理命令
 
@@ -303,7 +306,7 @@ make prod-deploy    # 生产环境部署（需确认）
 
 ## 🔍 故障排查
 
-### 常见问题
+### 常见问题及解决方案
 
 #### 1. 实例无法启动
 
@@ -338,12 +341,16 @@ sudo systemctl status consul.service
 
 # 查看日志
 sudo journalctl -u consul.service -f
+
+# 检查配置文件
+sudo cat /etc/consul.d/server.json | jq '.'
 ```
 
 **解决**:
 - 检查依赖是否安装完成
 - 验证网络连通性（8300-8302 端口）
 - 查看 `/opt/consul/bin/` 下脚本权限
+- 检查bind_addr是否为有效IP（非模板字符串）
 
 #### 3. 集群无法形成
 
@@ -352,18 +359,39 @@ sudo journalctl -u consul.service -f
 **排查**:
 ```bash
 # 检查自动发现配置
-sudo cat /etc/consul.d/default.json | jq '.retry_join'
+sudo cat /etc/consul.d/server.json | jq '.retry_join'
 
 # 检查 AWS 标签
 aws ec2 describe-instances --filters "Name=tag:consul-cluster,Values=server-cluster"
+
+# 检查 IAM 权限
+aws sts get-caller-identity
 ```
 
 **解决**:
 - 确认所有实例有正确的标签
 - 检查 IAM 权限（EC2 describe-instances）
-- 验证安全组规则
+- 验证安全组规则（8300-8302端口）
 
-#### 4. ACL 初始化失败
+#### 4. Gossip 加密密钥为空
+
+**症状**: 配置文件中 `"encrypt": ""` 为空
+
+**排查**:
+```bash
+# 检查 Secrets Manager
+aws secretsmanager get-secret-value --secret-id [SECRET_NAME]
+
+# 检查 IAM 权限
+aws iam get-role --role-name [IAM_ROLE_NAME]
+```
+
+**解决**:
+- 确认 Secrets Manager 中密钥存在
+- 检查 IAM 角色有 secretsmanager:GetSecretValue 权限
+- 验证实例可以访问 Secrets Manager API
+
+#### 5. ACL 初始化失败
 
 **症状**: Consul UI 显示无权限
 
@@ -394,6 +422,41 @@ dig @localhost -p 8600 consul.service.consul
 
 # ACL 状态
 consul acl token list
+
+# API健康检查
+curl -s http://localhost:8500/v1/status/leader
+curl -s http://localhost:8500/v1/health/state/any
+```
+
+### 快速诊断脚本
+
+```bash
+# 一键健康检查
+cat << 'EOF' > consul-health-check.sh
+#!/bin/bash
+echo "=== Consul 健康检查 ==="
+echo "1. 服务状态:"
+sudo systemctl status consul.service --no-pager
+
+echo -e "\n2. 集群成员:"
+consul members
+
+echo -e "\n3. Leader状态:"
+consul operator raft list-peers
+
+echo -e "\n4. 配置文件检查:"
+if [ -f /etc/consul.d/server.json ]; then
+    echo "bind_addr: $(cat /etc/consul.d/server.json | jq -r '.bind_addr')"
+    echo "encrypt key存在: $([ "$(cat /etc/consul.d/server.json | jq -r '.encrypt')" != "" ] && echo "是" || echo "否")"
+fi
+
+echo -e "\n5. 网络检查:"
+echo "私有IP: $(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)"
+echo "网卡信息: $(ip route | grep default | awk '{print $5}')"
+EOF
+
+chmod +x consul-health-check.sh
+./consul-health-check.sh
 ```
 
 ## 🔐 安全建议
@@ -437,11 +500,4 @@ client_count = 3
 - [Consul 官方文档](https://www.consul.io/docs)
 - [AWS EC2 用户指南](https://docs.aws.amazon.com/ec2/)
 - [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-## �� 许可证
-
-MIT License 
+- [Consul Cloud Auto-Join](https://www.consul.io/docs/install/cloud-auto-join)

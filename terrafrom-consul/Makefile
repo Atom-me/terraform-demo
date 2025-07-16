@@ -58,10 +58,10 @@ help: ## 显示帮助信息
 	@grep -E '^(setup|init|validate|fmt|plan|apply|destroy):.*?## .*$$' Makefile | awk 'BEGIN {FS = ":.*?## "}; {printf "    \033[36m%-13s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "  \033[33m集群管理:\033[0m"
-	@grep -E '^(status|consul-status|ui|ssh-server|ssh-client|test-ssh|logs-server|logs-client):.*?## .*$$' Makefile | awk 'BEGIN {FS = ":.*?## "}; {printf "    \033[36m%-13s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(status|consul-status|ui|ssh-server|ssh-client|test-ssh|logs|debug):.*?## .*$$' Makefile | awk 'BEGIN {FS = ":.*?## "}; {printf "    \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "  \033[33m开发工具:\033[0m"
-	@grep -E '^(dev-init|dev-deploy|dev-test|clean|clean-secrets|clean-all):.*?## .*$$' Makefile | awk 'BEGIN {FS = ":.*?## "}; {printf "    \033[36m%-13s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(dev-init|dev-deploy|dev-test|clean|clean-secrets|clean-all):.*?## .*$$' Makefile | awk 'BEGIN {FS = ":.*?## "}; {printf "    \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "  \033[33m其他:\033[0m"
 	@grep -E '^(help|prod-deploy):.*?## .*$$' Makefile | awk 'BEGIN {FS = ":.*?## "}; {printf "    \033[36m%-13s\033[0m %s\n", $$1, $$2}'
@@ -154,25 +154,39 @@ clean-secrets: ## 强制清理 AWS Secrets Manager 资源
 clean-all: destroy clean clean-secrets ## 彻底清理所有资源和本地文件
 	@echo "🧹 彻底清理完成！"
 
-logs-server: ## 查看第一个 Server 节点的 Consul 日志
+logs: ## 查看 Consul 集群日志
+	@echo "=== Server 节点日志 ==="
 	@SERVER_IP=$$(terraform output -json | jq -r '.server_ips.value[0]'); \
-	ssh -i $(SSH_PRIVATE_KEY) ubuntu@$$SERVER_IP "sudo journalctl -u consul.service -f"
-
-logs-client: ## 查看第一个 Client 节点的 Consul 日志
+	echo "正在连接到 Server: $$SERVER_IP"; \
+	ssh -i $(SSH_PRIVATE_KEY) ubuntu@$$SERVER_IP "sudo systemctl status consul.service && echo '' && sudo journalctl -u consul.service --no-pager -n 20"
+	@echo ""
+	@echo "=== Client 节点日志 ==="
 	@CLIENT_IP=$$(terraform output -json | jq -r '.client_ips.value[0]'); \
-	ssh -i $(SSH_PRIVATE_KEY) ubuntu@$$CLIENT_IP "sudo journalctl -u consul.service -f"
+	echo "正在连接到 Client: $$CLIENT_IP"; \
+	ssh -i $(SSH_PRIVATE_KEY) ubuntu@$$CLIENT_IP "sudo systemctl status consul.service && echo '' && sudo journalctl -u consul.service --no-pager -n 20"
+
+debug: ## 调试集群安装状态
+	@echo "=== Server 调试信息 ==="
+	@SERVER_IP=$$(terraform output -json | jq -r '.server_ips.value[0]'); \
+	echo "正在连接到 Server: $$SERVER_IP"; \
+	ssh -i $(SSH_PRIVATE_KEY) ubuntu@$$SERVER_IP "echo '=== Consul 进程 ===' && ps aux | grep consul | grep -v grep || echo '未找到 Consul 进程'; echo ''; echo '=== Consul 版本 ===' && /usr/local/bin/consul version || echo 'Consul 命令不可用'; echo ''; echo '=== 系统服务状态 ===' && sudo systemctl status consul.service || echo 'Consul 服务未安装'; echo ''; echo '=== 用户数据日志 ===' && sudo tail -20 /var/log/cloud-init-output.log"
+	@echo ""
+	@echo "=== Client 调试信息 ==="
+	@CLIENT_IP=$$(terraform output -json | jq -r '.client_ips.value[0]'); \
+	echo "正在连接到 Client: $$CLIENT_IP"; \
+	ssh -i $(SSH_PRIVATE_KEY) ubuntu@$$CLIENT_IP "echo '=== Consul 进程 ===' && ps aux | grep consul | grep -v grep || echo '未找到 Consul 进程'; echo ''; echo '=== Consul 版本 ===' && /usr/local/bin/consul version || echo 'Consul 命令不可用'; echo ''; echo '=== 系统服务状态 ===' && sudo systemctl status consul.service || echo 'Consul 服务未安装'"
 
 test-ssh: ## 测试所有节点的 SSH 免密登录
 	@echo "=== 测试 Server 节点免密登录 ==="
-	@terraform output -json | jq -r '.server_ips.value[]' | while read ip; do \
+	@for ip in $$(terraform output -json | jq -r '.server_ips.value[]'); do \
 		echo "测试 Server: $$ip"; \
-		ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no ubuntu@$$ip "echo '✅ Server $$ip 免密登录成功'" || echo "❌ Server $$ip 免密登录失败"; \
+		ssh -i $(SSH_PRIVATE_KEY) -o ConnectTimeout=5 -o StrictHostKeyChecking=no ubuntu@$$ip "echo '✅ Server $$ip 免密登录成功'" || echo "❌ Server $$ip 免密登录失败"; \
 	done
 	@echo ""
 	@echo "=== 测试 Client 节点免密登录 ==="
-	@terraform output -json | jq -r '.client_ips.value[]' | while read ip; do \
+	@for ip in $$(terraform output -json | jq -r '.client_ips.value[]'); do \
 		echo "测试 Client: $$ip"; \
-		ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no ubuntu@$$ip "echo '✅ Client $$ip 免密登录成功'" || echo "❌ Client $$ip 免密登录失败"; \
+		ssh -i $(SSH_PRIVATE_KEY) -o ConnectTimeout=5 -o StrictHostKeyChecking=no ubuntu@$$ip "echo '✅ Client $$ip 免密登录成功'" || echo "❌ Client $$ip 免密登录失败"; \
 	done
 
 # 开发相关命令

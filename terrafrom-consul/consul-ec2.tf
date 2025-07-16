@@ -19,13 +19,14 @@ resource "aws_instance" "consul_server" {
   subnet_id              = aws_subnet.main.id
   vpc_security_group_ids = [aws_security_group.consul.id]
   key_name               = var.key_name
-  
+  iam_instance_profile   = aws_iam_instance_profile.consul_instance_profile.name
+
   user_data = templatefile("${path.module}/scripts/user-data-server.sh", {
-    consul_token            = aws_secretsmanager_secret.consul_acl_token.arn
-    gossip_encryption_key   = aws_secretsmanager_secret.consul_gossip_encryption_key.arn
-    ssh_public_key         = file(var.ssh_public_key)
+    aws_region            = var.region
+    gossip_encryption_key = aws_secretsmanager_secret.consul_gossip_encryption_key.name
+    ssh_public_key        = file(var.ssh_public_key)
   })
-  
+
   tags = merge(local.common_tags, {
     Name           = "consul-server-${count.index + 1}"
     consul-cluster = "server-cluster"
@@ -40,15 +41,15 @@ resource "aws_instance" "consul_client" {
   subnet_id              = aws_subnet.main.id
   vpc_security_group_ids = [aws_security_group.consul.id]
   key_name               = var.key_name
+  iam_instance_profile   = aws_iam_instance_profile.consul_instance_profile.name
   depends_on             = [aws_instance.consul_server]
-  
+
   user_data = templatefile("${path.module}/scripts/user-data-client.sh", {
-    consul_token            = aws_secretsmanager_secret.consul_acl_token.arn
-    gossip_encryption_key   = aws_secretsmanager_secret.consul_gossip_encryption_key.arn
-    dns_request_token       = aws_secretsmanager_secret.consul_dns_request_token.arn
-    ssh_public_key         = file(var.ssh_public_key)
+    aws_region            = var.region
+    gossip_encryption_key = aws_secretsmanager_secret.consul_gossip_encryption_key.name
+    ssh_public_key        = file(var.ssh_public_key)
   })
-  
+
   tags = merge(local.common_tags, {
     Name           = "consul-client-${count.index + 1}"
     consul-cluster = "server-cluster"
