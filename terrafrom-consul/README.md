@@ -39,6 +39,7 @@
 - **AWS CLI**: 已配置凭证
 - **SSH Key**: 用于实例访问
 - **权限**: EC2、VPC、Secrets Manager
+- **注意**: macOS用户建议禁用AWS CLI分页器（见故障排查第6条）
 
 ## 🚀 快速开始
 
@@ -211,7 +212,7 @@ terrafrom-consul/
 |------|------|--------|------|
 | `prefix` | 资源名称前缀 | - | ✅ |
 | `region` | AWS 区域 | - | ✅ |
-| `aws_profile` | AWS Profile | `default` | ❌ |
+| `aws_profile` | AWS Profile | `atom` | ❌ |
 | `key_name` | SSH Key Pair 名称 | - | ✅ |
 | `ssh_private_key` | SSH 私钥路径 | - | ✅ |
 | `ssh_public_key` | SSH 公钥路径（免密登录） | `~/.ssh/id_rsa.pub` | ❌ |
@@ -408,6 +409,40 @@ consul acl bootstrap
 - 确保只有 Leader 执行 bootstrap
 - 检查密钥配置是否正确
 
+#### 6. macOS上AWS CLI分页器问题 ⚠️
+
+**症状**: 执行包含AWS CLI的make命令时需要手动按Q退出
+
+**原因**: macOS上的AWS CLI v2默认使用分页器（less），即使输出不长也会启动
+
+**解决方案**（推荐全局设置）:
+
+```bash
+# 方法1: 全局禁用AWS CLI分页器（推荐）
+echo 'export AWS_PAGER=""' >> ~/.zshrc
+source ~/.zshrc
+
+# 方法2: 在AWS配置文件中设置
+aws configure set cli_pager ""
+
+# 方法3: 临时禁用（单次命令）
+AWS_PAGER="" aws secretsmanager list-secrets
+
+# test
+(base) ➜  terrafrom-consul git:(main) ✗ aws secretsmanager list-secrets --profile atom --region us-east-1
+{
+    "SecretList": []
+}
+(base) ➜  terrafrom-consul git:(main) ✗
+```
+
+**验证修复**:
+```bash
+# 测试AWS CLI命令不再需要按Q
+aws secretsmanager list-secrets
+make destroy  # 应该不再停在分页器
+```
+
 ### 健康检查命令
 
 ```bash
@@ -499,5 +534,6 @@ client_count = 3
 
 - [Consul 官方文档](https://www.consul.io/docs)
 - [AWS EC2 用户指南](https://docs.aws.amazon.com/ec2/)
+- [AWS CLI 用户指南](https://docs.aws.amazon.com/cli/)
 - [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
 - [Consul Cloud Auto-Join](https://www.consul.io/docs/install/cloud-auto-join)
